@@ -37,7 +37,3 @@ Para instalar os pesos do Laya e executar a demo, siga as instruções em [`DEMO
 O Snake combina inferência do modelo com planejamento e proteção determinísticos. As propriedades do tabuleiro já são resumidas antes de chegar ao modelo, e o escudo pode substituir uma direção insegura. Portanto, a demo não mostra aprendizado autônomo de Snake nem mede, por si só, a qualidade geral de um modelo de decisão.
 
 As gravações documentam execuções reais e curtas, não um benchmark controlado. Os tempos dependem de hardware, checkpoint, backend, quantização, aquecimento e configuração. Para comparar qualidade, use os mesmos exemplos rotulados, estado, perguntas e critérios, com revisão humana para decisões sensíveis.
-
-## Arquivos locais ignorados
-
-O `.gitignore` exclui ambientes virtuais, caches, arquivos de modelo, clones externos, logs e gravações não selecionadas. Os arquivos mantidos em `resultados/` são pequenos registros usados na documentação e nos testes. Não envie pesos nem credenciais ao repositório.
