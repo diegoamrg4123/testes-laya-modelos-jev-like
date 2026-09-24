@@ -1,0 +1,36 @@
+# Python, testes e caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Credenciais locais e configurações privadas
+.env
+.env.*
+!.env.example
+
+# Pesos e clones de terceiros, baixados localmente
+/models/
+/external/
+
+# Logs e gravações produzidas durante novos testes
+*.log
+/resultados/*.jsonl
+!/resultados/snake-120.jsonl
+!/resultados/snake-20.jsonl
+!/resultados/laya-cuda-3.jsonl
+!/resultados/kev-3-rastreado.jsonl
+!/resultados/semif-3-rastreado.jsonl
+
+# Pré-vias SVG geradas; mantém a amostra documentada
+/artefatos/*.svg
+!/artefatos/snake-frame.svg
+
+# Nota de voz transcrita, mantida apenas no diretório de trabalho
+/ideia.md
