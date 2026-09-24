@@ -15,6 +15,22 @@ Este projeto não é o Jev, não é um SDK oficial da TypeSafe e não demonstra 
 - [`artefatos/snake-frame.svg`](artefatos/snake-frame.svg): prévia de um estado da demo.
 - [`LICENSE.upstream`](LICENSE.upstream) e [`NOTICE.upstream`](NOTICE.upstream): atribuição e licença do código adaptado da demo original Laya-MLX.
 
+## Modelos e referências externas
+
+Estes são os projetos e arquivos de modelo associados às execuções registradas neste repositório:
+
+| Teste | Código ou projeto | Modelo ou checkpoint usado |
+| --- | --- | --- |
+| Laya multilíngue | [Repositório Laya](https://github.com/NandhaKishorM/laya) | [Checkpoint multilíngue](https://huggingface.co/convaiinnovations/laya/tree/main/multilingual) |
+| Kev-0.8B | [Repositório Kev](https://github.com/jaredpalmer/kev) | [Checkpoint Kev-0.8B](https://huggingface.co/jaredpalmer/kev-0.8b) |
+| SemIf-4B Q4_K_M | [Projeto SemIf](https://github.com/TheoLeeCJ/SemIf) | [Qwen3.5-4B GGUF Q4_K_M](https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF/blob/main/Qwen_Qwen3.5-4B-Q4_K_M.gguf) |
+
+O teste SemIf também usa o [tokenizer Qwen3.5-4B na revisão fixada](https://huggingface.co/Qwen/Qwen3.5-4B/tree/851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a). Nesse backend, o SemIf pontua as opções usando os logits do Qwen congelado. O arquivo GGUF não é, por si só, um checkpoint de decisão treinado. Os detalhes das versões e das execuções estão em [`DEMO.md`](DEMO.md) e [`resultados/`](resultados/).
+
+A demo Snake deste projeto foi adaptada da [demo original Laya Snake do Laya-MLX](https://github.com/mizorewww/laya-mlx/blob/main/docs/SNAKE_DEMO.md), disponível no [repositório Laya-MLX](https://github.com/mizorewww/laya-mlx). A original usa MLX em Apple Silicon; esta adaptação executa PyTorch no Linux.
+
+Para contexto sobre o sistema que inspirou o formato de decisões, consulte a [apresentação do Jev pela TypeSafe](https://typesafe.ai/blog/introducing-system-one-models-and-jev) e a [documentação da TypeSafe](https://docs.typesafe.ai/introduction.md). Laya, Kev e SemIf são projetos distintos, não o Jev nem implementações oficiais da TypeSafe.
+
 ## Testes automatizados
 
 Requer Python 3.10 ou superior. Na raiz do repositório:
