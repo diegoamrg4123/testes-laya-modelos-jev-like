@@ -4,6 +4,29 @@ import json
 from urllib.request import Request, urlopen
 
 
+class DeciderAgent:
+    """Use a local Mapika decider checkpoint through its typed API."""
+
+    def __init__(self, decider, *, checkpoint):
+        self.decider = decider
+        self.checkpoint = str(checkpoint)
+        self.device = getattr(decider, "dev", None)
+        self.name = getattr(decider, "name", "decider")
+
+    @classmethod
+    def from_checkpoint(cls, checkpoint, *, device="cpu"):
+        from decider.infer import Decider
+
+        model = Decider(str(checkpoint), device=device, use_graphs=False)
+        return cls(model, checkpoint=checkpoint)
+
+    def predict(self, state, questions):
+        output = self.decider.system_one(state, questions)
+        if not isinstance(output, dict) or "answers" not in output:
+            raise ValueError("decider returned an invalid typed-decision response")
+        return output
+
+
 class KevAgent:
     """Talk to a Kev server bound to the local loopback interface."""
 

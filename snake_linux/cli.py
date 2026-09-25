@@ -15,7 +15,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.live import Live
 
-from .alternatives import KevAgent, SemIfAgent
+from .alternatives import DeciderAgent, KevAgent, SemIfAgent
 from .game import SnakeGame
 from .policy import LayaPolicy
 from .ui import BG, compose, layout_size
@@ -49,9 +49,37 @@ def positive(value):
     return result
 
 
-def load_backend(backend, model, *, guarded, prompt, semif_threads):
+def load_backend(backend, model, *, guarded, prompt, semif_threads, decider_device="cpu"):
     if backend == "laya":
         return LayaPolicy(model, guarded=guarded, prompt=prompt)
+    if backend == "decider":
+        if not model:
+            raise ValueError("--model is required for the decider backend")
+        agent = DeciderAgent.from_checkpoint(model, device=decider_device)
+        device = str(agent.device or decider_device)
+        decider_config = {}
+        config_path = Path(model) / "decider_config.json"
+        if config_path.is_file():
+            with config_path.open(encoding="utf-8") as config_file:
+                decider_config = json.load(config_file)
+        if device.startswith("cuda"):
+            import torch
+            hardware = torch.cuda.get_device_name(0)
+            engine = "decider-ai PyTorch CUDA"
+        else:
+            hardware = device.upper()
+            engine = "decider-ai PyTorch CPU"
+        policy = LayaPolicy(model=model, guarded=guarded, prompt=prompt, agent=agent)
+        policy.metadata.update(
+            name=f"Mapika {agent.name}", engine=engine, hardware=hardware,
+            network="offline during play", checkpoint={
+                "path": str(model), "name": agent.name,
+                "version": decider_config.get("version"),
+                "release_date": decider_config.get("release_date"),
+            },
+            policy="Option probabilities over planner features; optional cycle safety shield",
+        )
+        return policy
     if backend == "kev":
         if model:
             raise ValueError("--model is only for Laya directories or SemIf GGUF files")
@@ -81,8 +109,14 @@ def play(argv=None):
         description=__doc__,
 
     )
-    parser.add_argument("--backend", choices=("laya", "kev", "semif"), default="laya")
-    parser.add_argument("--model", help="Laya directory or SemIf GGUF file; Kev uses the local server")
+    parser.add_argument("--backend", choices=("laya", "decider", "kev", "semif"), default="laya")
+    parser.add_argument(
+        "--model", help="Laya or decider directory, or SemIf GGUF file; Kev uses the local server"
+    )
+    parser.add_argument(
+        "--decider-device", choices=("cpu", "cuda"), default="cpu",
+        help="Device for the decider backend (default: cpu)",
+    )
     parser.add_argument("--semif-threads", type=int, default=4, help="CPU threads for SemIf (default: 4)")
     parser.add_argument("--prompt", choices=("compact", "detailed"), default="compact")
 
@@ -119,6 +153,8 @@ def play(argv=None):
         parser.error("--semif-threads must be positive")
     if args.backend == "kev" and args.model:
         parser.error("Kev reads its checkpoint through the localhost server, not --model")
+    if args.backend == "decider" and not args.model:
+        parser.error("--model is required for the decider backend")
     try:
         game = SnakeGame(args.width, args.height, args.seed, args.initial_length)
     except ValueError as error:
@@ -128,7 +164,8 @@ def play(argv=None):
         parser.error("Interactive display needs a TTY. Use --headless for a non-interactive run.")
     print(f"Loading {args.backend} backend...", file=sys.stderr)
     policy = load_backend(args.backend, args.model, guarded=not args.unassisted,
-                          prompt=args.prompt, semif_threads=args.semif_threads)
+                          prompt=args.prompt, semif_threads=args.semif_threads,
+                          decider_device=args.decider_device)
     warm = SnakeGame(args.width, args.height, args.seed + 10000, args.initial_length)
     for _ in range(6):
         decision = policy.decide(warm)

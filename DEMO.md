@@ -26,6 +26,147 @@ PYTHONPATH=. .venv/bin/python scripts/gerar_preview.py \
   resultados/snake-120.jsonl artefatos/minha-previa.svg --frame 10
 ```
 
+## Reproduzir os testes no terminal
+
+Esta seção descreve um procedimento completo para repetir uma partida visível ou headless, registrar as decisões e conferir a gravação. Execute tudo a partir da raiz do repositório. Os comandos não baixam pesos dentro da partida.
+
+### 1. Conferir o ambiente
+
+Antes de iniciar, confirme que o terminal tem pelo menos **104 colunas × 35 linhas**, que o ambiente principal existe e que o checkpoint escolhido está no caminho esperado:
+
+```bash
+pwd
+.venv/bin/python --version
+.venv/bin/python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+test -d models/laya && printf 'Laya encontrado\n'
+```
+
+Para partidas com Laya, use `.venv`. Para os dois checkpoints Mapika decider, use `.venv-decider` com o `PYTHONPATH` indicado na seção do decider. Não mantenha o servidor Kev ligado enquanto medir Laya ou outro modelo na RTX 2050.
+
+### 2. Rodar com a interface visível
+
+Este é o modo para observar o tabuleiro, as barras de probabilidade e os campos `PROPOSED`, `EXECUTED` e `SHIELD`:
+
+```bash
+USE_TF=0 .venv/bin/python -m snake_linux \
+  --backend laya --width 8 --height 6 --seed 7 \
+  --max-speed
+```
+
+O jogo continua até `Q`. As teclas disponíveis são:
+
+| Tecla | Ação |
+| --- | --- |
+| `Espaço` | Pausar ou continuar |
+| `↑` | Aumentar a velocidade alvo |
+| `↓` | Reduzir a velocidade alvo |
+| `R` | Reiniciar com a próxima semente |
+| `Q` | Sair |
+
+Para observar somente uma partida curta e deixar o resultado no terminal, acrescente `--steps 3 --no-alt-screen`. Para modelos lentos, `--max-speed` evita espera artificial entre inferências, mas não acelera o modelo.
+
+### 3. Rodar headless com gravação
+
+O modo headless não desenha o tabuleiro e é adequado para uma execução finita ou para automação. Cada nome passado a `--record` deve ser novo, pois o programa não sobrescreve gravações existentes.
+
+```bash
+USE_TF=0 .venv/bin/python -m snake_linux \
+  --backend laya --headless --width 8 --height 6 --seed 7 \
+  --steps 3 --max-speed \
+  --record resultados/laya-terminal-3.jsonl
+```
+
+Ao final, o processo imprime um resumo JSON com `steps`, `inference_calls`, `score`, `deaths`, `interventions` e `mean_inference_ms`. O arquivo JSONL contém uma linha de metadados, uma linha `frame` por decisão e uma linha `end`.
+
+### 4. Preparar e testar o Mapika decider
+
+Os checkpoints usados nesta pesquisa são `Mapika/decider-2b` na versão `2b-v11` e `Mapika/decider-4b` na versão `4b-v2.1`. A instalação local usa um ambiente auxiliar que reaproveita o PyTorch do `.venv` principal:
+
+```bash
+uv venv --system-site-packages .venv-decider
+uv pip install --python .venv-decider/bin/python --no-deps \
+  'decider-ai==1.5.0'
+```
+
+O comando seguinte faz o processo encontrar o PyTorch e as bibliotecas do ambiente principal, mas carregar o pacote `decider-ai` do ambiente auxiliar:
+
+```bash
+export PYTHONPATH="$PWD/.venv/lib/python3.11/site-packages"
+```
+
+Baixe os pesos antes da partida. As revisões abaixo são as usadas nos registros deste projeto:
+
+```bash
+.venv/bin/hf download Mapika/decider-2b \
+  --revision 533964dae8be954c5b5e19fa4948e48408094c1e \
+  --local-dir models/decider-2b-v11
+
+.venv/bin/hf download Mapika/decider-4b \
+  --revision eb5fbdfc9448473ec25e399882912863afbdb70e \
+  --local-dir models/decider-4b-v2.1
+```
+
+Na RTX 2050 de 4 GiB, a reprodução comparável deve usar CPU. O 2B ocupa aproximadamente 3,8 GB em BF16 e o 4B aproximadamente 8,4 GB. Os dois modelos usam fallback PyTorch se os kernels opcionais `causal_conv1d` e `flash-linear-attention` não estiverem ativos. Isso é compatível, mas deixa as decisões mais lentas.
+
+Para ver o decider-2b v11 no terminal:
+
+```bash
+export PYTHONPATH="$PWD/.venv/lib/python3.11/site-packages"
+USE_TF=0 .venv-decider/bin/python -m snake_linux \
+  --backend decider --model models/decider-2b-v11 \
+  --decider-device cpu --width 8 --height 6 --seed 7 \
+  --steps 3 --max-speed --no-alt-screen \
+  --record resultados/decider-2b-v11-terminal.jsonl
+```
+
+Para repetir o teste headless do mesmo checkpoint, acrescente `--headless`. Para o decider-4b v2.1, troque apenas o caminho do modelo e o nome do registro:
+
+```bash
+USE_TF=0 .venv-decider/bin/python -m snake_linux \
+  --backend decider --model models/decider-4b-v2.1 \
+  --decider-device cpu --headless --width 8 --height 6 \
+  --seed 7 --steps 3 --max-speed \
+  --record resultados/decider-4b-v2.1-terminal.jsonl
+```
+
+### 5. Repetir Kev e SemIf
+
+O Kev exige dois terminais. No primeiro, ligue o servidor local:
+
+```bash
+cd external/kev
+CUDA_VISIBLE_DEVICES=0 .venv/bin/python -m kev.serve \
+  --run jaredpalmer/kev-0.8b --port 8009
+```
+
+No segundo terminal, volte para a raiz do projeto, confirme o servidor e execute a partida:
+
+```bash
+curl http://127.0.0.1:8009/v1/models
+USE_TF=0 .venv/bin/python -m snake_linux \
+  --backend kev --headless --width 8 --height 6 --seed 7 \
+  --steps 3 --max-speed --record resultados/kev-terminal-3.jsonl
+```
+
+Encerre o servidor Kev com `Ctrl+C` assim que terminar. Para o SemIf, não é preciso servidor:
+
+```bash
+USE_TF=0 .venv/bin/python -m snake_linux \
+  --backend semif --headless --width 8 --height 6 --seed 7 \
+  --steps 3 --max-speed --semif-threads 4 \
+  --record resultados/semif-terminal-3.jsonl
+```
+
+### 6. Validar uma gravação
+
+Depois de uma partida, confira o resumo do arquivo e execute a suíte que reproduz as gravações incluídas:
+
+```bash
+.venv/bin/python -m pytest tests/ -q
+```
+
+A validação esperada deve confirmar que cada `frame.game` é o estado anterior à ação, que as probabilidades estão completas, que `executed` pertence às direções seguras quando o escudo está ativo e que o resumo final concorda com a quantidade de frames. Três passos confirmam integração e formato, mas não permitem comparar inteligência, calibração ou qualidade de jogo longo.
+
 ## Como o Laya participa da jogada
 
 ```text
@@ -52,9 +193,9 @@ O planejador **já fornece ao modelo** as propriedades `Blocked`, `Unsafe`, `Saf
 
 O checkpoint `convaiinnovations/laya`, subpasta `multilingual`, foi carregado por PyTorch com CUDA na RTX 2050. Em uma execução headless de 120 passos com tabuleiro padrão e escudo, houve 120 chamadas reais ao modelo, 0 mortes e 0 intervenções; média de inferência de aproximadamente 26,0 ms por movimento e 37,8 passos por segundo sem pacing. Esses valores são **uma execução local**, não benchmark comparativo. O primeiro frame gravado atribuiu `UP: 0.0819`, `DOWN: 0.4016`, `LEFT: 0.1377` e `RIGHT: 0.3788` e executou `DOWN`. Na gravação menor, de 20 passos em tabuleiro 8 × 6, o resultado foi 2 alimentos, 0 mortes e 20 inferências. A demonstração não valida acurácia nem calibração em Snake; números mudam com hardware, tabuleiro, cargas e versão.[2]
 
-## Testar a mesma cobra com Kev e SemIf
+## Testar a mesma cobra com backends alternativos
 
-O jogo agora aceita `--backend laya` (padrão), `--backend kev` e `--backend semif`.
+O jogo agora aceita `--backend laya` (padrão), `--backend decider`, `--backend kev` e `--backend semif`.
 O tabuleiro, as três perguntas (`move`, `risk` e `food`) e o escudo de segurança são os mesmos. O Kev recebe uma requisição HTTP por jogada, com as três perguntas; o SemIf pontua três perguntas sobre o mesmo estado com a função `score_shared` do projeto original. As probabilidades do SemIf são condicionais às opções e **não calibradas** para este jogo. Os valores de risco e alcance são opiniões do modelo sobre atributos do planejador, não estatísticas de segurança.[5][6]
 
 **Kev-0.8B:** o código do Kev, o ambiente virtual e os pesos são dependências locais e não são distribuídos neste repositório. A gravação incluída foi feita com o repositório oficial em `external/kev`; a revisão usada na instalação local foi `557598fced1dada75dfbf36ed144dce309ac6ceb`. Para repetir o teste, clone o projeto nesse caminho, confira a documentação upstream e prepare o ambiente e o checkpoint antes de iniciar o servidor. O servidor precisa estar ligado enquanto a partida roda. No primeiro terminal, a partir da raiz do projeto:
@@ -85,6 +226,23 @@ USE_TF=0 .venv/bin/python -m snake_linux --backend semif --headless \
 `--semif-threads 4` altera o número de threads (4 por padrão); `--model CAMINHO.gguf` altera o arquivo GGUF **somente para SemIf**, mas continua exigindo vocabulário compatível com o tokenizer fixado. O adaptador checa igualdade de IDs entre os tokenizadores antes de ler logits; não gera uma resposta textual nem usa o GGUF como se carregasse uma cabeça de decisão treinada. O código do SemIf veio do commit `1f2dea3e25379f9dfc98cb83c324f00ab5deda37`; seu manifesto fixa a revisão do tokenizer Qwen em `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` e o GGUF em `4168f45a16a1290d65a4ec0fa312ae917a4c15d6`.[6]
 
 **Instalação nesta máquina:** o Kev está num venv Python 3.12 isolado; o SemIf usa o `.venv` Python 3.11 do jogo com instalação editável sem alterar as versões existentes de PyTorch e Transformers, mais `llama-cpp-python==0.3.35` e `diskcache`. Portanto, o SemIf foi **testado aqui**, mas não é uma reprodução exata das versões do ambiente pinado pelo autor. As cópias em `external/` preservam as licenças upstream. Não atualize as dependências do jogo para as do Kev: são ambientes diferentes.[5][6]
+
+**Mapika decider-2b v11 e decider-4b v2.1:** o adaptador usa a API `system_one` do pacote `decider-ai` e mantém as mesmas três perguntas, o mesmo planejador e o mesmo escudo. Como a RTX 2050 desta máquina tem 4 GiB, o teste comparável dos dois pesos foi feito na CPU. Os registros curtos e a medição estão em [`resultados/decider-v11-v2.1-snake-3.md`](resultados/decider-v11-v2.1-snake-3.md). Depois de preparar o ambiente isolado e baixar os pesos, os comandos são:
+
+```bash
+export PYTHONPATH="$PWD/.venv/lib/python3.11/site-packages"
+USE_TF=0 .venv-decider/bin/python -m snake_linux --backend decider \
+  --model models/decider-2b-v11 --decider-device cpu --headless \
+  --width 8 --height 6 --seed 7 --steps 3 --max-speed \
+  --record resultados/novo-decider-2b.jsonl
+
+USE_TF=0 .venv-decider/bin/python -m snake_linux --backend decider \
+  --model models/decider-4b-v2.1 --decider-device cpu --headless \
+  --width 8 --height 6 --seed 7 --steps 3 --max-speed \
+  --record resultados/novo-decider-4b.jsonl
+```
+
+O backend aceita `--decider-device cuda`, mas o 2B requer cerca de 4 GiB e o 4B cerca de 8,4 GiB em BF16. Não foi usado CUDA nesta comparação para evitar falta de memória e manter os dois modelos no mesmo dispositivo.
 
 ### Primeira comparação local observada
 

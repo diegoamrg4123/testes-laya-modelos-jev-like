@@ -27,6 +27,10 @@ htmlcov/
 !/resultados/laya-cuda-3.jsonl
 !/resultados/kev-3-rastreado.jsonl
 !/resultados/semif-3-rastreado.jsonl
+!/resultados/decider-2b-v11-snake-3.jsonl
+!/resultados/decider-4b-v2.1-snake-3.jsonl
+!/resultados/decider-2b-v11-snake-3-view.jsonl
+!/resultados/decider-2b-v11-snake-live.jsonl
 
 # Pré-vias SVG geradas; mantém a amostra documentada
 /artefatos/*.svg

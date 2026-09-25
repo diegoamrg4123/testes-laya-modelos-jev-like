@@ -7,6 +7,61 @@ from snake_linux.game import DIRECTIONS, SnakeGame
 from snake_linux.policy import LayaPolicy
 
 
+def test_decider_adapter_uses_system_one_and_preserves_typed_answers():
+    from snake_linux.alternatives import DeciderAgent
+
+    calls = []
+
+    class FakeDecider:
+        dev = "cpu"
+        name = "decider-test"
+
+        def system_one(self, state, questions):
+            calls.append((state, questions))
+            return {
+                "answers": {
+                    "move": {"probabilities": {d: (0.6 if d == "LEFT" else 0.4 / 3) for d in DIRECTIONS}},
+                    "risk": {"noul": 0.8},
+                    "food": {"noul": 0.7},
+                },
+                "usage": {"input_tokens": 91, "output_tokens": 0},
+            }
+
+    agent = DeciderAgent(FakeDecider(), checkpoint="models/test-decider")
+    decision = LayaPolicy(agent=agent).decide(SnakeGame(8, 6, seed=7))
+
+    assert len(calls) == 1
+    assert set(calls[0][1]) == {"move", "risk", "food"}
+    assert decision.probabilities["LEFT"] == 0.6
+    assert decision.dead_end_risk == pytest.approx(0.2)
+    assert decision.input_tokens == 91
+
+
+def test_cli_selects_decider_and_records_checkpoint_version(monkeypatch, tmp_path):
+    from snake_linux import cli
+
+    model = tmp_path / "decider"
+    model.mkdir()
+    (model / "decider_config.json").write_text(
+        '{"version": "2b-v11", "release_date": "2026-09-24"}', encoding="utf-8"
+    )
+    agent = type("Agent", (), {"device": "cpu", "name": "decider-2b-v11"})()
+    calls = []
+    monkeypatch.setattr(
+        cli.DeciderAgent, "from_checkpoint",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or agent,
+    )
+
+    policy = cli.load_backend(
+        "decider", str(model), guarded=True, prompt="compact", semif_threads=4,
+        decider_device="cpu",
+    )
+
+    assert calls == [((str(model),), {"device": "cpu"})]
+    assert policy.metadata["name"] == "Mapika decider-2b-v11"
+    assert policy.metadata["checkpoint"]["version"] == "2b-v11"
+
+
 def test_kev_adapter_posts_snake_questions_and_keeps_raw_probabilities(monkeypatch):
     from snake_linux.alternatives import KevAgent
 
